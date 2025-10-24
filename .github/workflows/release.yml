@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            suffix: ""
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            suffix: ".exe"
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            suffix: ""
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build binary
+        run: |
+          go build -o edenred-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/edenred
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: edenred-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
