@@ -58,11 +58,16 @@ func (c *Client) FetchBalances(ctx context.Context, username, password string) (
 
 	var balances Balances
 	for _, benefit := range benefits {
+		amount, err := benefit.balanceFloat64()
+		if err != nil {
+			return nil, fmt.Errorf("parse %s balance: %w", benefit.WalletType, err)
+		}
+
 		switch benefit.WalletType {
 		case "main":
-			balances.Lunch = benefit.Balance
+			balances.Lunch = amount
 		case "wellness":
-			balances.Virike = benefit.Balance
+			balances.Virike = amount
 		}
 	}
 
@@ -130,14 +135,14 @@ func (c *Client) signIn(ctx context.Context, username, password string) (*signIn
 }
 
 type userBenefit struct {
-	CardType           string  `json:"cardType"`
-	WalletType         string  `json:"walletType"`
-	CardStatus         string  `json:"cardStatus"`
-	Balance            float64 `json:"balance"`
-	MobileAvailable    bool    `json:"mobileAvailable"`
-	MobilePayment      bool    `json:"mobilePaymentEnabled"`
-	ExpectsRenewedCard *string `json:"expectsRenewedCard"`
-	AccountActive      bool    `json:"accountActive"`
+	CardType           string      `json:"cardType"`
+	WalletType         string      `json:"walletType"`
+	CardStatus         string      `json:"cardStatus"`
+	Balance            json.Number `json:"balance"`
+	MobileAvailable    bool        `json:"mobileAvailable"`
+	MobilePayment      bool        `json:"mobilePaymentEnabled"`
+	ExpectsRenewedCard *string     `json:"expectsRenewedCard"`
+	AccountActive      bool        `json:"accountActive"`
 }
 
 type userBenefitsResponse struct {
@@ -168,12 +173,32 @@ func (c *Client) getUserBenefits(ctx context.Context, sessionToken, refreshToken
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, readRespBody(resp.Body))
 	}
 
+	dec := json.NewDecoder(resp.Body)
+	dec.UseNumber()
+
 	var result userBenefitsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := dec.Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
 	return result.Benefits, nil
+}
+
+func (b userBenefit) balanceFloat64() (float64, error) {
+	if b.Balance == "" {
+		return 0, nil
+	}
+
+	if i, err := b.Balance.Int64(); err == nil {
+		return float64(i) / 100, nil
+	}
+
+	f, err := b.Balance.Float64()
+	if err != nil {
+		return 0, err
+	}
+
+	return f, nil
 }
 
 func readRespBody(r io.Reader) string {
